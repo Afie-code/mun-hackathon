@@ -1,0 +1,104 @@
+mBot2 PYTHON GAME SAMPLE
+========================
+
+This is a starting point for mBot2 Python mode (CyberPi/mBot2 APIs). It moves
+in short, low-speed steps. Press A when the robot reaches a plant to report it.
+Replace this button-based confirmation with your plant-arrival sensor or
+navigation logic when available.
+
+BLUETOOTH SETUP
+---------------
+
+The Arduino sample expects newline-delimited Bluetooth serial messages such as
+START, PLANT <cell_id>, and STOP. Send the cell number (1-9) with each plant
+report so the Arduino can light the matching grid LED. The example uses an
+HC-05-compatible Bluetooth serial module.
+
+The mBot2 Python environment needs a Bluetooth UART transmitter paired with
+that module. CyberPi's normal Bluetooth connection to mBlock is not necessarily
+an app-to-Arduino serial link. Implement send_bt_line() below using the
+Bluetooth UART adapter/extension actually installed on your mBot2. The
+NotImplementedError is intentional: it prevents a sample from pretending to
+send messages when no adapter has been configured.
+
+CODE
+----
+
+import time
+import cyberpi
+import mbot2
+
+
+MOVE_SPEED = 25
+STEP_SECONDS = 0.15
+GAME_SECONDS = 60
+
+
+def send_bt_line(message):
+    # Replace with the paired Bluetooth UART adapter's write/send call.
+    # Send exactly one newline-terminated message to the Arduino.
+    raise NotImplementedError("Connect send_bt_line() to your Bluetooth UART adapter")
+
+
+def get_current_cell_id():
+    # Replace with the cell number from your route or plant-location sensor.
+    # Use 1-9, numbered left-to-right from the bottom row upward.
+    raise NotImplementedError("Connect this to your route or cell sensor")
+
+
+def stop_robot():
+    mbot2.EM_stop()
+
+
+def wait_for_release(button):
+    while cyberpi.controller.is_press(button):
+        time.sleep(0.05)
+
+
+def move_one_sample_step():
+    # Replace this timed step with your measured route or sensor-based movement.
+    mbot2.forward(MOVE_SPEED)
+    time.sleep(STEP_SECONDS)
+    stop_robot()
+
+
+def main():
+    stop_robot()
+    cyberpi.console.println("Press B to start the 60-second game")
+    while not cyberpi.controller.is_press("b"):
+        time.sleep(0.05)
+    wait_for_release("b")
+
+    send_bt_line("START")
+    started_at = time.time()
+    cyberpi.console.println("Game started. Press A at each plant.")
+
+    try:
+        while time.time() - started_at < GAME_SECONDS:
+            move_one_sample_step()
+            if cyberpi.controller.is_press("a"):
+                wait_for_release("a")
+                cell_id = get_current_cell_id()
+                if not 1 <= cell_id <= 9:
+                    raise ValueError("Current cell ID must be from 1 to 9")
+                send_bt_line("PLANT " + str(cell_id))
+                cyberpi.console.println("Plant reported")
+            time.sleep(0.05)
+    finally:
+        stop_robot()
+        send_bt_line("STOP")
+        cyberpi.console.println("Game ended")
+
+
+main()
+
+
+IMPORTANT
+---------
+
+The Arduino's timer is the official game timer. This script also stops the
+robot after 60 seconds as a local safety limit. The Arduino rejects plant
+reports after time expires. The short forward step is only a placeholder:
+test at low speed in a clear area, then replace it with movement and plant
+detection suitable for your course. Add a physical emergency stop; software
+stop commands are not an emergency stop.

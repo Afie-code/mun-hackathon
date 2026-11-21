@@ -1,0 +1,232 @@
+GANTRY FIELD LAB - HOW IT WORKS
+===============================
+
+This is a local browser app for programming a two-axis gantry. It has four
+parts:
+
+1. web/index.html, web/styles.css, and web/app.js make the editor and display.
+   The editor remembers your code in this browser.
+2. Main.py serves the editor and the HTTP API.
+3. safe_language.py interprets a restricted Python-like language. It does not
+   execute arbitrary Python, imports, file access, or network code.
+4. gantry.py implements the movement, planting, growth, harvesting, simulation,
+   and optional USB serial interface.
+
+The Field view is a 3-by-3 bed, with each plot 20 cm by 20 cm (the full bed is
+60 cm by 60 cm). Programs use integer, one-based plot column and row indices; a
+move targets the center of that plot. Column 1 is leftmost and row 1 is
+bottommost. The center plot (2, 2) is home. The app converts plot centers to
+signed millimetre offsets from the center for the Arduino, and the configured
+gantry travel is outlined on the map. Moves travel directly to the destination
+plot and may be diagonal. Simulation defaults cover the full bed
+(-200–200 mm on both axes). Hardware defaults are 0–300 mm by 0–200 mm, so
+moves left or below home are rejected until negative hardware limits are
+configured. Change hardware limits only to measured, mechanically safe values.
+
+The Field view polls status while a program runs. It draws the current position,
+recent movement path, planted crop locations, and requested destination. In
+hardware mode, the marker only moves after the Arduino confirms a command; the
+Arduino protocol does not stream intermediate coordinates. The firmware must
+coordinate both axes to perform diagonal moves.
+
+The **Test code** button executes the same restricted program on a fresh,
+separate simulator. It switches the map to a marked preview, does not alter the
+real controller or its crop state, and never sends Arduino commands. **Run
+program** is the separate action that can control hardware.
+
+The app starts in SIMULATION mode unless GANTRY_SERIAL_PORT is set. In
+simulation, movement changes the displayed position and planting/harvesting
+change software state only. It does not control hardware.
+
+
+RUNNING THE APP
+---------------
+
+From the project directory:
+
+    python Main.py
+
+Open http://127.0.0.1:8000 in a browser. Stop the server with Ctrl+C.
+
+Run the automated checks with:
+
+    python -m unittest discover -s tests
+
+
+HOW TO WRITE PROGRAMS
+---------------------
+
+Programs use Python-like syntax with indentation. You can define your own
+functions, use variables, if/else, for loops with range(), while loops,
+comparisons, basic arithmetic, tuples, and lists.
+
+Example:
+
+    home()
+    plant()
+    move(1, 0)
+    plant()
+    move(0, 1)
+    plant()
+    move(-1, 0)
+    plant()
+    home()
+
+This sample stays within the default travel limits. `move(dx, dy)` moves
+directly to the destination plot, including diagonally when both deltas are
+nonzero. To visit all nine plots, first set limits to the measured,
+mechanically safe travel across the bed. Use spaces
+to indent the program. The
+language is intentionally limited and does not support imports, arbitrary
+Python libraries, attribute access, or file/network operations.
+
+Available gantry functions:
+
+    home()
+        Home the hardware initially. Call this before moving, planting, or
+        harvesting in hardware mode. After homing, it returns directly to the
+        center plot.
+
+    move(dx, dy)
+        Move by integer plot steps relative to the current plot, including
+        directly to diagonal destinations.
+
+    speed(percent)
+        Set movement speed from 1 to 100 percent. The preview animates at this
+        pace. Hardware mode sends SPEED percent to the Arduino, which must
+        support that command.
+
+    get_position()
+        Return the current (column, row) plot position; home is (2, 2).
+
+    plant()
+        Plant at the gantry's current position and start its growth timer.
+
+    harvest()
+        Harvest at the current position. It fails unless a crop has been
+        planted at that exact position and its growth period has elapsed.
+
+    wait(seconds)
+        Pause for up to 5 seconds at a time. Real time also passes while the
+        gantry moves or while the app is idle between runs.
+
+    log(value)
+        Print a message/value in the run console.
+
+The starter program homes the gantry and plants four plot centers. Run a later
+program to harvest the same coordinates after the displayed growth period.
+Hardware limits may reject plots outside the configured, measured travel. The
+server
+remembers planted crops only while it is running; restarting the app clears
+them. Planting again at a position restarts that position's growth timer.
+
+
+SETTINGS YOU MAY NEED TO CHANGE
+-------------------------------
+
+These are environment variables. Set them in the terminal before starting the
+server. If unset, the default shown is used.
+
+    GANTRY_SERIAL_PORT
+        Arduino USB serial port. Unset means simulation mode.
+        Linux example:   /dev/ttyACM0
+        Windows example: COM3
+
+    GANTRY_BAUD_RATE
+        Arduino serial speed. Default: 115200. Must match the firmware.
+
+    GANTRY_GROWTH_SECONDS
+        Minimum real elapsed time between plant() and harvest() at one
+        position. Default: 10 seconds. Must be a positive number.
+
+    GANTRY_X_MIN / GANTRY_X_MAX
+        Minimum/maximum safe X travel in millimetres. Defaults: 0 and 300.
+
+    GANTRY_Y_MIN / GANTRY_Y_MAX
+        Minimum/maximum safe Y travel in millimetres. Defaults: 0 and 200.
+
+    GANTRY_HOST
+        Web server interface. Default: 127.0.0.1 (local machine only). Keep it
+        local unless you add authentication and understand the risks.
+
+    GANTRY_WEB_PORT
+        Web server port. Default: 8000.
+
+Example Linux/macOS start command:
+
+    GANTRY_SERIAL_PORT=/dev/ttyACM0 GANTRY_GROWTH_SECONDS=10 python Main.py
+
+Example Windows PowerShell commands:
+
+    $env:GANTRY_SERIAL_PORT = "COM3"
+    $env:GANTRY_GROWTH_SECONDS = "10"
+    python Main.py
+
+Measure the machine's actual safe travel before changing the axis limits. These
+software limits do not replace physical endstops or an emergency stop.
+
+
+ARDUINO SERIAL PROTOCOL
+-----------------------
+
+The Arduino must read one newline-terminated command at a time and send one
+newline-terminated response for commands other than STOP. Movement values sent
+to the Arduino are signed millimetre offsets from the center home (one plot is
+200 mm):
+
+    MOVE_TO x y    -> OK x y after the move, or ERR reason
+    SPEED percent -> OK after applying the requested 1–100% speed, or ERR reason
+    HOME           -> OK 0 0 after homing, or ERR reason
+    PLANT          -> OK after planting, or ERR reason
+    HARVEST        -> OK after harvesting, or ERR reason
+    STOP           -> immediately request a stop; no reply is read
+
+Movement functions use integer plot indices. The Arduino's HOME routine must
+physically home at the center plot and reply `OK 0 0`; coordinates sent to the
+Arduino and soft limits are millimetres. PLANT and HARVEST operate the tool at
+the current position. The Arduino firmware, motor-driver pins, endstop logic,
+tool wiring, and physical emergency stop must be designed and tested for the
+actual machine; this project does not define those hardware details.
+Hardware firmware must implement SPEED percent for programs that call
+speed(percent). Programs that do not call speed() continue to use the firmware's
+existing default speed.
+
+
+HTTP API
+--------
+
+    GET  /api/status  -> mode, position, limits, home state, growth, field view
+    GET  /api/preview -> isolated test-simulation state
+    GET  /api/docs    -> editor function names and descriptions
+    POST /api/run     -> JSON: {"code": "plant()", "confirm_hardware": true}
+    POST /api/test    -> JSON: {"code": "move(-1, 0)"}; simulation only
+    POST /api/stop    -> cancel the current program and request Arduino STOP
+    POST /api/test/stop -> cancel the current preview only
+
+The hardware confirmation is required for every hardware program run.
+
+
+CODE LIMITS
+-----------
+
+In safe_language.py, these constants limit user programs:
+
+    MAX_STATEMENTS       5000 interpreter steps
+    MAX_LOOP_ITERATIONS  1000 iterations per loop
+    MAX_RUNTIME_SECONDS  30 seconds per program run
+    MAX_CALL_DEPTH       20 nested user-function calls
+    MAX_NUMBER_MAGNITUDE 1000000000
+
+In Main.py, MAX_REQUEST_BYTES limits incoming HTTP request/program size to
+32768 bytes. These limits can be adjusted in those files if the project needs
+different bounds.
+
+
+SAFETY
+------
+
+Test programs in simulation first. For hardware, verify the gantry is clear,
+the travel limits are correct, the Arduino firmware safely handles every
+command, and the physical emergency stop works. The browser Stop button sends
+a software stop request; it is not an emergency stop. Never run unattended
+hardware based only on the app's software limits.

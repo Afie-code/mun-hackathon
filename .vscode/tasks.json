@@ -1,0 +1,33 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Run Gantry Field Lab",
+			"type": "shell",
+			"command": "/home/codespace/.python/current/bin/python",
+			"args": [
+				"Main.py"
+			],
+			"isBackground": true,
+			"problemMatcher": [
+				"$python"
+			],
+			"group": "build"
+		},
+		{
+			"label": "Run Gantry Field Lab on 8001",
+			"type": "shell",
+			"command": "env",
+			"args": [
+				"GANTRY_WEB_PORT=8001",
+				"/home/codespace/.python/current/bin/python",
+				"Main.py"
+			],
+			"isBackground": true,
+			"problemMatcher": [
+				"$python"
+			],
+			"group": "build"
+		}
+	]
+}

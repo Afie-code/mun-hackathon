@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Garden Lab - Grow and Code</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <a class="brand" href="/" aria-label="Gantry Field Lab home">
+          <span class="brand-mark" aria-hidden="true">⌁</span>
+          <span>GARDEN<span class="brand-light">LAB</span></span>
+        </a>
+        <div class="connection">
+          <span class="status-dot" id="status-dot"></span>
+          <span id="mode-label">Checking controller…</span>
+        </div>
+      </header>
+
+      <section class="intro">
+        <div>
+          <p class="eyebrow">A GARDEN FOR GROWING IDEAS</p>
+          <h1>Code a garden.<br><span>Watch it grow!</span></h1>
+          <p class="intro-copy">Give your garden helper friendly instructions, one step at a time.</p>
+        </div>
+        <div class="position-card">
+          <span class="card-label">TOOL POSITION</span>
+          <strong id="position">Home (plot 2, 2)</strong>
+          <span class="position-hint" id="limits">Loading travel limits…</span>
+        </div>
+      </section>
+
+      <section class="visual-panel" aria-label="Live gantry field view">
+        <div class="visual-heading">
+          <div class="section-title">
+            <span class="section-icon" aria-hidden="true">⌖</span>
+            <div><h2>Your garden</h2><p>See where your garden helper goes and how plants are growing</p></div>
+          </div>
+          <span class="activity-badge" id="activity-label">Idle</span>
+        </div>
+        <div class="visual-body">
+          <div class="map-wrap">
+            <svg id="field-map" viewBox="0 0 390 370" role="img"
+              aria-label="Top-down view of the gantry bed, plants, and movement path">
+              <defs>
+                <linearGradient id="grass-base" x1="0" y1="0" x2="0.8" y2="1">
+                  <stop offset="0" stop-color="#8fca69"></stop>
+                  <stop offset="1" stop-color="#68a94f"></stop>
+                </linearGradient>
+                <pattern id="grass-texture" width="36" height="36" patternUnits="userSpaceOnUse">
+                  <rect width="36" height="36" fill="url(#grass-base)"></rect>
+                  <g fill="none" stroke-linecap="round" stroke-width="1.5" opacity=".42">
+                    <path d="M5 18l2-5m1 6 3-7M25 8l2-4m1 6 3-6M17 33l2-5m2 6 3-7" stroke="#d7ed9f"></path>
+                    <path d="M12 8l2-4m1 6 3-5M4 33l2-5m2 6 2-6M28 25l2-5m2 6 2-5" stroke="#397e40"></path>
+                  </g>
+                  <circle cx="20" cy="17" r="1.2" fill="#d9e995" opacity=".55"></circle>
+                  <circle cx="11" cy="27" r="1" fill="#3e8742" opacity=".5"></circle>
+                </pattern>
+                <linearGradient id="plot-frame" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0" stop-color="#a97545"></stop>
+                  <stop offset="1" stop-color="#79502f"></stop>
+                </linearGradient>
+                <linearGradient id="plot-soil" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0" stop-color="#9a6840"></stop>
+                  <stop offset="1" stop-color="#805333"></stop>
+                </linearGradient>
+              </defs>
+              <rect class="map-background" x="0" y="0" width="390" height="370" rx="12"></rect>
+              <g id="field-grid"></g>
+              <g id="field-trail"></g>
+              <g id="field-crops"></g>
+              <g id="field-target"></g>
+              <g id="field-tool"></g>
+            </svg>
+            <p class="map-note" id="map-note">Each plot is 20 cm × 20 cm. Home is the center cell; moves use integer plot indices and safe limits remain in mm.</p>
+          </div>
+          <aside class="field-stats" aria-label="Field status">
+            <div class="stat-card">
+              <span class="stat-label">GANTRY POSITION</span>
+              <strong id="field-position">X 2 <span>/</span> Y 2 plots</strong>
+            </div>
+            <div class="stat-card">
+              <span class="stat-label">MOVE SPEED</span>
+              <strong id="field-speed">100%</strong>
+              <span class="stat-subtitle">Set with speed(1–100)</span>
+            </div>
+            <div class="stat-card">
+              <span class="stat-label">CROPS</span>
+              <strong id="crop-count">0 planted</strong>
+              <span id="crop-summary" class="stat-subtitle">No crops in the field</span>
+            </div>
+            <div class="stat-card">
+              <span class="stat-label">CURRENT ACTION</span>
+              <strong id="field-action">Idle</strong>
+              <span id="field-target-label" class="stat-subtitle">Waiting for a program</span>
+            </div>
+            <div class="field-legend" aria-label="Map legend">
+              <span><i class="legend-tool"></i>Gantry</span>
+              <span><i class="legend-growing"></i>Growing</span>
+              <span><i class="legend-ready"></i>Ready to harvest</span>
+              <span><i class="legend-target"></i>Destination</span>
+            </div>
+          </aside>
+        </div>
+      </section>
+
+      <section class="workspace" aria-label="Gantry programming workspace">
+        <div class="editor-panel">
+          <div class="panel-heading">
+            <div class="file-tab"><span class="file-dot"></span> my_field.py</div>
+            <span class="language-tag">PYTHON-LIKE</span>
+          </div>
+          <label class="sr-only" for="code">Gantry program</label>
+          <div class="code-editor">
+            <pre id="code-highlight" aria-hidden="true"></pre>
+            <textarea id="code" wrap="off" spellcheck="false" autocapitalize="off" autocomplete="off"
+              aria-describedby="editor-help"></textarea>
+          </div>
+          <div class="editor-footer">
+            <span id="editor-help">Your code runs in a restricted environment; only the documented API is available.</span>
+            <div class="run-actions">
+              <button id="stop-button" class="button button-stop" type="button" disabled>Stop</button>
+              <button id="test-button" class="button button-test" type="button" title="Simulate this program without sending Arduino commands">
+                ◇ Test code
+              </button>
+              <button id="run-button" class="button button-run" type="button">
+                <span aria-hidden="true">▶</span> Run program
+              </button>
+            </div>
+          </div>
+          <label class="hardware-confirm" id="hardware-confirm-wrap" hidden>
+            <input id="hardware-confirm" type="checkbox">
+            <span>I have cleared the gantry area and am ready to move the hardware.</span>
+          </label>
+        </div>
+
+        <aside class="side-panel">
+          <section class="api-section">
+            <div class="section-title">
+              <span class="section-icon" aria-hidden="true">⌘</span>
+              <div><h2>Gantry API</h2><p>Functions your program can call</p></div>
+            </div>
+            <ul id="api-list" class="api-list"><li>Loading functions…</li></ul>
+          </section>
+          <section class="tip-card">
+            <span class="tip-icon" aria-hidden="true">✳</span>
+            <div>
+              <h3>Try the simulator first</h3>
+              <p>Try your garden plan safely in the simulator before asking a grown-up to connect the real machine.</p>
+            </div>
+          </section>
+        </aside>
+      </section>
+
+      <section class="console-panel" aria-label="Program output">
+        <div class="console-heading">
+          <div><span class="console-led"></span><h2>Run console</h2></div>
+          <button id="clear-button" class="clear-button" type="button">Clear</button>
+        </div>
+        <div id="console-output" class="console-output" role="log" aria-live="polite">
+          <p class="console-muted">Ready when you are. Run a program to see its output here.</p>
+        </div>
+      </section>
+
+      <footer class="footer">
+        <span>GARDEN LAB <span class="footer-separator">/</span> MADE FOR CURIOUS GROWERS</span>
+        <span>Grown-ups: keep clear of moving parts.</span>
+      </footer>
+    </main>
+    <script src="/app.js" defer></script>
+  </body>
+</html>

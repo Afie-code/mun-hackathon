@@ -1,0 +1,277 @@
+ARDUINO SCORE, TIMER, GRID LED, AND DISPLAY SAMPLE
+==================================================
+
+This example uses an Arduino Uno/Nano, an HC-05-compatible Bluetooth serial
+module, nine individual grid LEDs, and two seven-segment display modules
+(one for score and one for time).
+
+Example pin assignment:
+
+  - HC-05 TX -> Arduino pin 10 (SoftwareSerial RX)
+  - Arduino pin 11 (SoftwareSerial TX) -> HC-05 RX through a voltage divider
+  - Grid LEDs 1-8 -> pins 2-9, each through a current-limiting resistor
+  - Grid LED 9 -> pin 12 through a current-limiting resistor
+  - Connect module, LEDs, and display grounds to Arduino GND
+
+The LED array order is row-major from the bottom-left of the grid:
+
+  7 8 9
+  4 5 6
+  1 2 3
+
+The mBot2 sends newline-terminated START, PLANT <cell_id>, and STOP messages.
+The cell ID is an integer from 1 to 9, so the Arduino can light the matching
+grid LED. A section only scores once per round. The Arduino sends
+STATE <seconds_remaining> <score> and TIME_UP <score> messages back over
+Bluetooth, and prints status on USB Serial.
+
+DISPLAY DRIVER NOTE
+-------------------
+
+The exact seven-segment module has not been selected. Implement
+displayScore(value) and displayTime(seconds) below using the driver/library
+and wiring for your specific modules. The hooks are placeholders and currently
+do not update a physical display. For example, TM1637 and MAX7219 modules use
+different libraries and pins. Do not assume I2C wiring unless your modules
+support it.
+
+CODE
+----
+
+#include <SoftwareSerial.h>
+#include <string.h>
+
+const uint8_t BLUETOOTH_RX_PIN = 10;
+const uint8_t BLUETOOTH_TX_PIN = 11;
+const uint8_t GRID_LED_PINS[9] = {2, 3, 4, 5, 6, 7, 8, 9, 12};
+const unsigned long GAME_DURATION_MS = 60000UL;
+const size_t INPUT_BUFFER_SIZE = 32;
+
+SoftwareSerial bluetooth(BLUETOOTH_RX_PIN, BLUETOOTH_TX_PIN);
+
+char inputBuffer[INPUT_BUFFER_SIZE];
+size_t inputLength = 0;
+bool gameActive = false;
+uint16_t visitedCells = 0;
+unsigned int score = 0;
+unsigned long gameStartedAt = 0;
+int lastReportedSeconds = -1;
+
+
+void displayScore(unsigned int value) {
+  // TODO: update the score seven-segment module using its actual driver.
+  (void)value;
+}
+
+
+void displayTime(int seconds) {
+  // TODO: update the timer seven-segment module using its actual driver.
+  (void)seconds;
+}
+
+
+void clearGridLeds() {
+  for (uint8_t index = 0; index < 9; index++) {
+    digitalWrite(GRID_LED_PINS[index], LOW);
+  }
+}
+
+
+void reportState(int secondsRemaining) {
+  displayScore(score);
+  displayTime(secondsRemaining);
+
+  bluetooth.print("STATE ");
+  bluetooth.print(secondsRemaining);
+  bluetooth.print(' ');
+  bluetooth.println(score);
+
+  Serial.print("TIME ");
+  Serial.print(secondsRemaining);
+  Serial.print("  SCORE ");
+  Serial.println(score);
+}
+
+
+void endGame() {
+  gameActive = false;
+  displayTime(0);
+
+  bluetooth.print("TIME_UP ");
+  bluetooth.println(score);
+  Serial.print("TIME_UP  SCORE ");
+  Serial.println(score);
+}
+
+
+void startGame() {
+  if (gameActive) {
+    bluetooth.println("ERR GAME_ALREADY_RUNNING");
+    return;
+  }
+
+  score = 0;
+  visitedCells = 0;
+  gameStartedAt = millis();
+  lastReportedSeconds = 60;
+  gameActive = true;
+  clearGridLeds();
+  reportState(60);
+}
+
+
+void handlePlantMessage(const char *message) {
+  if (!gameActive) {
+    bluetooth.println("ERR GAME_NOT_RUNNING");
+    return;
+  }
+
+  // Accept exactly "PLANT 1" through "PLANT 9".
+  if (strncmp(message, "PLANT ", 6) != 0 ||
+      message[6] < '1' || message[6] > '9' || message[7] != '\0') {
+    bluetooth.println("ERR USE_PLANT_1_TO_9");
+    return;
+  }
+
+  unsigned long elapsed = millis() - gameStartedAt;
+  if (elapsed >= GAME_DURATION_MS) {
+    endGame();
+    return;
+  }
+
+  uint8_t cellIndex = (uint8_t)(message[6] - '1');
+  uint16_t cellBit = (uint16_t)1 << cellIndex;
+  if (visitedCells & cellBit) {
+    bluetooth.println("ERR CELL_ALREADY_COUNTED");
+    return;
+  }
+
+  visitedCells |= cellBit;
+  digitalWrite(GRID_LED_PINS[cellIndex], HIGH);
+  score++;
+
+  int secondsRemaining =
+      (int)((GAME_DURATION_MS - elapsed + 999UL) / 1000UL);
+  reportState(secondsRemaining);
+}
+
+
+void handleMessage(const char *message) {
+  if (strcmp(message, "START") == 0) {
+    startGame();
+    return;
+  }
+
+  if (strncmp(message, "PLANT", 5) == 0) {
+    handlePlantMessage(message);
+    return;
+  }
+
+  if (strcmp(message, "STOP") == 0) {
+    if (gameActive) {
+      endGame();
+    }
+    return;
+  }
+
+  if (strcmp(message, "RESET") == 0) {
+    gameActive = false;
+    score = 0;
+    visitedCells = 0;
+    clearGridLeds();
+    reportState(60);
+    Serial.println("RESET");
+    bluetooth.println("RESET_OK");
+    return;
+  }
+
+  bluetooth.println("ERR UNKNOWN_COMMAND");
+}
+
+
+void readBluetoothMessages() {
+  while (bluetooth.available() > 0) {
+    char incoming = (char)bluetooth.read();
+
+    if (incoming == '\r') {
+      continue;
+    }
+
+    if (incoming == '\n') {
+      inputBuffer[inputLength] = '\0';
+      if (inputLength > 0) {
+        handleMessage(inputBuffer);
+      }
+      inputLength = 0;
+      continue;
+    }
+
+    if (inputLength < INPUT_BUFFER_SIZE - 1) {
+      inputBuffer[inputLength++] = incoming;
+    } else {
+      inputLength = 0;
+      bluetooth.println("ERR MESSAGE_TOO_LONG");
+    }
+  }
+}
+
+
+void updateTimer() {
+  if (!gameActive) {
+    return;
+  }
+
+  unsigned long elapsed = millis() - gameStartedAt;
+  if (elapsed >= GAME_DURATION_MS) {
+    endGame();
+    return;
+  }
+
+  int secondsRemaining =
+      (int)((GAME_DURATION_MS - elapsed + 999UL) / 1000UL);
+  if (secondsRemaining != lastReportedSeconds) {
+    lastReportedSeconds = secondsRemaining;
+    reportState(secondsRemaining);
+  }
+}
+
+
+void setup() {
+  for (uint8_t index = 0; index < 9; index++) {
+    pinMode(GRID_LED_PINS[index], OUTPUT);
+  }
+  clearGridLeds();
+  displayScore(0);
+  displayTime(60);
+
+  Serial.begin(115200);
+  bluetooth.begin(9600);
+  Serial.println("Ready. Waiting for START over Bluetooth.");
+  bluetooth.println("READY");
+}
+
+
+void loop() {
+  readBluetoothMessages();
+  updateTimer();
+}
+
+
+BEHAVIOR
+--------
+
+- START resets the score and all nine LEDs, then starts a 60-second round.
+- PLANT <cell_id> lights that cell's LED and adds one point if it is new.
+- A second report for the same cell does not add another point.
+- The score display shows the score; the timer display counts down from 60.
+- TIME_UP is sent when the minute expires; the timer display shows 0.
+- STOP ends a running round early.
+- RESET clears the score and all grid LEDs.
+
+Update the mBot2 sample to send the correct cell ID (1-9) with each plant
+report. Implement both display hooks with the actual modules' driver library
+before expecting the panel displays to work. The HC-05 RX input is not 5V
+tolerant; use a suitable voltage divider from an Uno/Nano TX pin. Check the
+Arduino's available current and use driver transistors or a separate supply
+if the LEDs/displays require more current than its pins can provide. Test the
+Bluetooth link, display wiring, and LED wiring before connecting the robot.

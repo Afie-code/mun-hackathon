@@ -1,0 +1,169 @@
+HARDWARE INTEGRATION CHECKLIST
+==============================
+
+Purpose
+-------
+
+Use this checklist when the exact Arduino, mBot2, Bluetooth, LEDs, and display
+hardware have been selected. The samples are examples, not ready-to-upload
+firmware: update their hardware-specific parts and test the complete system
+before using it in a game.
+
+Current sample files:
+
+  MBOT2_SAMPLE.txt
+      mBot2 Python movement and game loop; Bluetooth send and cell-location
+      functions are placeholders.
+
+  ARDUINO_SAMPLE.txt
+      Arduino game timer, score, nine GPIO LED example, Bluetooth serial
+      parser, and seven-segment display-driver placeholders.
+
+CURRENT ASSUMPTIONS TO VERIFY
+-----------------------------
+
+  - Arduino board is an Uno/Nano-class 5V board.
+  - Bluetooth module is HC-05-compatible and provides serial messages.
+  - Bluetooth UART is available to the mBot2 Python program.
+  - Nine individual LEDs each have a suitable current-limiting resistor.
+  - Two seven-segment displays show score and remaining seconds.
+  - A grid cell is numbered 1-9, left-to-right from the bottom row upward.
+  - Each cell can score only once per round.
+  - The Arduino starts a 60-second round after receiving START.
+  - The mBot2 reports a plant with PLANT <cell_id>.
+
+Do not treat an assumption as confirmed until the exact parts, wiring, and
+software interfaces have been checked.
+
+DETAILS TO COLLECT
+------------------
+
+1. Arduino and electrical setup
+
+   [ ] Exact Arduino board and logic voltage.
+   [ ] Available pins after reserving USB serial, Bluetooth, and displays.
+   [ ] Power source and current budget for all nine LEDs and both displays.
+   [ ] Whether LED driver transistors, shift registers, or a separate supply
+       are needed.
+   [ ] Grounding and voltage-level requirements between every connected
+       device.
+
+2. Grid LEDs
+
+   [ ] LED type, color, forward voltage/current, and resistor values.
+   [ ] Pin or driver channel for each of the nine grid positions.
+   [ ] Confirm numbering/orientation against the actual field:
+
+         7 8 9
+         4 5 6
+         1 2 3
+
+   [ ] Confirm what the LEDs mean (plant collected, robot position, or another
+       state), and whether they should reset at START, RESET, or both.
+
+3. Score and time displays
+
+   [ ] Exact display module/model and digit count.
+   [ ] Driver IC/interface (for example TM1637, MAX7219, I2C backpack, or raw
+       multiplexed digits), voltage, and required pins.
+   [ ] Arduino library and version to use.
+   [ ] Display formatting: score width/overflow behavior and time format
+       (seconds, MM:SS, leading zeros).
+   [ ] Implement displayScore() and displayTime() in ARDUINO_SAMPLE.txt with
+       the selected library. The current hooks intentionally do not drive
+       hardware.
+
+4. Bluetooth link
+
+   [ ] Exact Bluetooth module on the Arduino and exact Bluetooth hardware/API
+       available to the mBot2.
+   [ ] Confirm that the two devices can pair/connect directly. Do not assume
+       that a Bluetooth connection used by mBlock provides a serial data link.
+   [ ] Baud rate (if serial), pairing method, connection/reconnection behavior,
+       and any required voltage divider or level shifter.
+   [ ] Confirm newline framing, character encoding, and maximum message size.
+   [ ] Decide whether the Arduino should send messages back to the mBot2 and
+       how the mBot2 will read them.
+
+   The current example protocol is:
+
+       mBot2 -> Arduino: START
+       mBot2 -> Arduino: PLANT <cell_id>    (cell_id is 1 through 9)
+       mBot2 -> Arduino: STOP
+       mBot2 -> Arduino: RESET
+       Arduino -> mBot2: READY
+       Arduino -> mBot2: STATE <seconds_remaining> <score>
+       Arduino -> mBot2: TIME_UP <score>
+       Arduino -> mBot2: ERR <reason>
+
+   Change both samples together if message names, fields, delimiters, or
+   acknowledgment behavior change.
+
+5. mBot2 behavior and plant detection
+
+   [ ] Exact mBot2 firmware/runtime and supported Python modules/API versions.
+   [ ] Replace send_bt_line() with the confirmed Bluetooth API.
+   [ ] Replace get_current_cell_id() with route tracking, localization, or the
+       selected sensor. Verify it returns the correct cell number 1-9.
+   [ ] Replace the timed forward step with the real movement strategy:
+       measured distance/speed, turns, obstacle handling, and stopping.
+   [ ] Decide whether plant collection is automatic (sensor) or operator
+       confirmed (button). Avoid counting a single plant repeatedly while a
+       sensor remains active.
+   [ ] Add timeout/disconnect behavior that stops the motors safely.
+   [ ] Confirm how the robot learns the round has ended; it currently has a
+       local 60-second stop while the Arduino is the official timer.
+
+6. Game rules
+
+   [ ] Confirm round length and whether it is configurable.
+   [ ] Confirm whether a cell scores once or multiple plants in one cell can
+       score more than once.
+   [ ] Define whether STOP ends the round as a final score or is only an
+       emergency/software stop.
+   [ ] Define RESET behavior, including which displays and LEDs are cleared.
+   [ ] Define score overflow and what should happen when all nine cells are
+       counted.
+
+FILES TO UPDATE
+---------------
+
+After confirming the details above:
+
+  1. Update text-files/ARDUINO_SAMPLE.txt:
+       - board-specific includes and pin assignments
+       - Bluetooth initialization, message parser, and send/receive behavior
+       - all nine LED pins/drivers and cell-to-LED mapping
+       - score/time display library setup and displayScore()/displayTime()
+       - limits, reset behavior, and error reporting
+
+  2. Update text-files/MBOT2_SAMPLE.txt:
+       - exact mBot2 Bluetooth API and connection lifecycle
+       - actual movement/sensor logic and stopping behavior
+       - correct cell-ID calculation and plant event handling
+       - handling of Arduino status, errors, timer end, and disconnects
+
+  3. Keep the protocol and behavior sections of both files synchronized.
+     Update text-files/HOW_IT_WORKS.txt if the project documentation should
+     describe the completed physical game setup.
+
+VALIDATION BEFORE GAME USE
+--------------------------
+
+  [ ] Compile the Arduino code for the exact board with selected libraries.
+  [ ] Run the mBot2 Python sample on the exact firmware/runtime.
+  [ ] Verify each cell ID lights only its corresponding physical LED.
+  [ ] Verify duplicate cell reports follow the agreed scoring rule.
+  [ ] Verify score and timer displays at start, during play, at timeout, and
+      after reset.
+  [ ] Verify all Bluetooth commands, acknowledgments, malformed messages,
+      lost connections, and reconnect behavior.
+  [ ] Measure the game timer and test boundary cases near zero seconds.
+  [ ] Test movement at low speed in a clear, controlled area.
+  [ ] Confirm motor stop behavior and use a separate physical emergency stop.
+  [ ] Check component temperatures, current draw, and power stability.
+  [ ] Have a responsible person review the wiring and test plan before running
+      the robot around people.
+
+Software limits and Bluetooth stop messages are not substitutes for a physical
+emergency stop, safe wiring, mechanical safeguards, or supervision.
